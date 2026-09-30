@@ -206,7 +206,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "❌ <b>Release failed — klever-ci</b>" <<< "$MSG"
-          grep -q "master @ a1b2c3d4 · 👤 motya" <<< "$MSG"
+          grep -q "master @ a1b2c3d · 👤 motya" <<< "$MSG"
           ! grep -q "📦" <<< "$MSG"
           ! grep -q "releases/tag" <<< "$MSG"
           echo "OK"
