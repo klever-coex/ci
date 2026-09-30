@@ -15,7 +15,7 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
 ```yaml
 - name: Telegram notify
   if: always()
-  uses: klever-coex/klever-ci/.github/actions/release-notify@main
+  uses: klever-coex/ci/.github/actions/release-notify@master
   with:
     telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     telegram_chat: ${{ secrets.TELEGRAM_TO }}
@@ -28,50 +28,25 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
     extra: "Image build will need a manual dispatch"
 ```
 
-- Secrets per repo: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_TO` (same as notify-telegram).
+- Secrets per repo: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_TO`.
 - **Custom template**: a project can keep its own message layout in
   `.github/notify-template.html` (mikepenz-style, like `configuration` for
   changelog builder) and pass `template: .github/notify-template.html`.
-  See [`notify-template.example.html`](.github/notify-template.example.html)
-  for all placeholders:
-  - blocks: `{{HEADER}}`, `{{PROMOTED}}`, `{{RELEASE_LINE}}`, `{{SRC}}`,
-    `{{CHANGELOG}}`, `{{EXTRA}}`, `{{FOOTER}}`
-  - scalars: `{{PROJECT}}`, `{{TAG}}`, `{{CHANNEL}}`, `{{ACTOR}}`, `{{REF}}`,
-    `{{SHA}}`, `{{STATUS}}`, `{{RELEASE_URL}}`, `{{RUN_URL}}`
-  - unknown placeholders resolve to empty; a missing template file fails the step.
+  See [`notify-template.example.html`](.github/notify-template.example.html).
 - `format: html` is used; changelog/extra text is HTML-escaped, so arbitrary
   PR titles are safe to pass through.
 - Changelog longer than `changelog_max_entries` (default 12) is cut to
   `…and N more — full changelog` linking to the release page.
 - Delivery problems are warnings, never job failures. `outputs.sent` says
   whether the message was delivered; `outputs.message` returns the rendered HTML.
-- Layout lives in [`template.html`](.github/actions/release-notify/template.html)
-  (`{{HEADER}}`, `{{PROMOTED}}`, `{{RELEASE_LINE}}`, `{{SRC}}`, `{{CHANGELOG}}`,
-  `{{EXTRA}}`, `{{FOOTER}}` placeholders); bash logic lives in `render.sh` /
-  `report.sh` next to it. `action.yml` is only the inputs/outputs contract and
-  the send step — edit the template to change the message shape, not YAML.
+- Layout lives in [`template.html`](.github/actions/release-notify/template.html);
+  bash logic in `render.sh` / `report.sh` next to it. `action.yml` is only the
+  inputs/outputs contract and the send step — edit the template to change the
+  message shape, not YAML. Placeholders:
+  - blocks: `{{HEADER}}`, `{{PROMOTED}}`, `{{RELEASE_LINE}}`, `{{SRC}}`,
+    `{{CHANGELOG}}`, `{{EXTRA}}`, `{{FOOTER}}`
+  - scalars: `{{PROJECT}}`, `{{TAG}}`, `{{CHANNEL}}`, `{{ACTOR}}`, `{{REF}}`,
+    `{{SHA}}`, `{{STATUS}}`, `{{RELEASE_URL}}`, `{{RUN_URL}}`
+  - unknown placeholders resolve to empty; a missing template file fails the step.
 - Format is covered by `.github/workflows/release-notify-test.yml`
   (runs on push/PR; `workflow_dispatch` with `send: true` sends a real message).
-
-### `.github/actions/notify-telegram`
-
-Telegram notification about a CI event. Bare Bot API call — no third-party actions.
-
-```yaml
-- uses: klever-coex/klever-ci/.github/actions/notify-telegram@main
-  if: always()
-  with:
-    telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-    telegram_chat: ${{ secrets.TELEGRAM_TO }}
-    status: ${{ job.status }}          # success | failure | cancelled | custom
-    title: "Release v0.2.0 published"
-    message: |                        # optional extra lines
-      channel: pre-release
-      tag: v0.2.0-rc.2
-```
-
-Secrets needed per repo: `TELEGRAM_BOT_TOKEN` (from BotFather), `TELEGRAM_TO` (chat id).
-
-Marker is derived from `status`: ✅ success, ❌ failure, ⚪ cancelled, ℹ️ anything else.
-A link to the workflow run is appended automatically. Failures to deliver are
-warnings, not job failures — CI must not break because Telegram is down.
