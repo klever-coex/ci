@@ -40,6 +40,13 @@ inputs:
     description: "Plain-text lines appended before the footer (e.g. warnings)"
     required: false
     default: ""
+  template:
+    description: >-
+      Path to a custom message template in the caller's repo (relative to the
+      workspace), same placeholders as the bundled template.html. Defaults to
+      the template shipped with this action.
+    required: false
+    default: ""
   changelog_max_entries:
     description: "Changelog entries shown before truncating to a 'full changelog' link"
     required: false
@@ -101,6 +108,7 @@ runs:
         INPUT_REPO: ${{ inputs.repo }}
         INPUT_RUN_ID: ${{ inputs.run_id }}
         INPUT_RELEASE_URL: ${{ inputs.release_url }}
+        INPUT_TEMPLATE: ${{ inputs.template }}
       run: '"${{ github.action_path }}/render.sh"'
 
     - id: send

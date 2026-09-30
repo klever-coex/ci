@@ -186,6 +186,57 @@ jobs:
           ! grep -q "<script>" <<< "$MSG"
           echo "OK"
 
+      - name: Scenario — custom template from the caller's .github
+        id: custom
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          template: .github/notify-template.example.html
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+          changelog: |
+            ## Features
+            - custom template render (#1)
+
+      - name: Assert — custom template from the caller's .github
+        env:
+          MSG: ${{ steps.custom.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "🔔 CUSTOM: klever-ci v1.2.3 (stable)" <<< "$MSG"
+          grep -q "custom template render" <<< "$MSG"
+          grep -q "by motya" <<< "$MSG"
+          grep -q "{{" <<< "$MSG" && { echo "placeholder leaked"; exit 1; } || true
+          ! grep -q "📦" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — missing template file fails the render
+        id: missing
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          template: .github/does-not-exist.html
+        continue-on-error: true
+
+      - name: Assert — missing template file fails the render
+        env:
+          OUTCOME: ${{ steps.missing.outcome }}
+        run: |
+          set -euo pipefail
+          [[ "${OUTCOME}" == "failure" ]]
+          echo "OK"
+
       - name: Scenario — failed release
         id: failure
         uses: ./.github/actions/release-notify

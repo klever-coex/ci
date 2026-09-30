@@ -29,6 +29,16 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
 ```
 
 - Secrets per repo: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_TO` (same as notify-telegram).
+- **Custom template**: a project can keep its own message layout in
+  `.github/notify-template.html` (mikepenz-style, like `configuration` for
+  changelog builder) and pass `template: .github/notify-template.html`.
+  See [`notify-template.example.html`](.github/notify-template.example.html)
+  for all placeholders:
+  - blocks: `{{HEADER}}`, `{{PROMOTED}}`, `{{RELEASE_LINE}}`, `{{SRC}}`,
+    `{{CHANGELOG}}`, `{{EXTRA}}`, `{{FOOTER}}`
+  - scalars: `{{PROJECT}}`, `{{TAG}}`, `{{CHANNEL}}`, `{{ACTOR}}`, `{{REF}}`,
+    `{{SHA}}`, `{{STATUS}}`, `{{RELEASE_URL}}`, `{{RUN_URL}}`
+  - unknown placeholders resolve to empty; a missing template file fails the step.
 - `format: html` is used; changelog/extra text is HTML-escaped, so arbitrary
   PR titles are safe to pass through.
 - Changelog longer than `changelog_max_entries` (default 12) is cut to

@@ -97,7 +97,16 @@ fi
 
 # --- render template ----------------------------------------------------------
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-msg="$(cat "${script_dir}/template.html")"
+if [[ -n "${INPUT_TEMPLATE}" ]]; then
+  template_path="${INPUT_TEMPLATE}"
+  if [[ ! -f "${template_path}" ]]; then
+    echo "::error::release-notify: template not found: ${template_path}" >&2
+    exit 1
+  fi
+else
+  template_path="${script_dir}/template.html"
+fi
+msg="$(cat "${template_path}")"
 
 msg="${msg//'{{HEADER}}'/"${header}"}"
 msg="${msg//'{{PROMOTED}}'/"${promoted}"}"
@@ -106,6 +115,20 @@ msg="${msg//'{{SRC}}'/"${src_line}"}"
 msg="${msg//'{{CHANGELOG}}'/"${changelog}"}"
 msg="${msg//'{{EXTRA}}'/"${extra}"}"
 msg="${msg//'{{FOOTER}}'/"${footer}"}"
+
+# scalar placeholders for custom templates
+msg="${msg//'{{PROJECT}}'/"${project}"}"
+msg="${msg//'{{TAG}}'/"${tag}"}"
+msg="${msg//'{{CHANNEL}}'/"${channel}"}"
+msg="${msg//'{{ACTOR}}'/"${actor}"}"
+msg="${msg//'{{REF}}'/"${ref}"}"
+msg="${msg//'{{SHA}}'/"${INPUT_SHA:0:7}"}"
+msg="${msg//'{{RELEASE_URL}}'/"${release_url}"}"
+msg="${msg//'{{RUN_URL}}'/"${run_url}"}"
+msg="${msg//'{{STATUS}}'/"${status}"}"
+
+# unknown placeholders in a custom template resolve to empty instead of leaking
+msg="$(sed -E 's/\{\{[A-Z_]+\}\}//g' <<< "${msg}")"
 
 # placeholders that resolved to empty leave bare lines — squeeze repeats and trim
 msg="$(awk '
