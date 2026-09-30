@@ -1,0 +1,232 @@
+name: "Release Notify"
+author: "klever-coex"
+description: Formatted Telegram notification about a release
+
+inputs:
+  telegram_token:
+    description: "Telegram bot token (from BotFather)"
+    required: true
+  telegram_chat:
+    description: "Target chat id (user/group/channel)"
+    required: true
+  status:
+    description: "Job conclusion to report: success, failure, cancelled"
+    required: false
+    default: "success"
+  project:
+    description: "Project name in the header"
+    required: false
+    default: ${{ github.event.repository.name }}
+  tag:
+    description: "Release tag, e.g. v0.2.0"
+    required: false
+    default: ""
+  channel:
+    description: "Release channel: stable or pre-release"
+    required: false
+    default: "stable"
+  promoted_from:
+    description: "RC tag this release was promoted from, e.g. v0.2.0-rc.2"
+    required: false
+    default: ""
+  changelog:
+    description: "Raw changelog (mikepenz style: '## Category' headers + '- entry' lines)"
+    required: false
+    default: ""
+  extra:
+    description: "Plain-text lines appended before the footer (e.g. warnings)"
+    required: false
+    default: ""
+  changelog_max_entries:
+    description: "Changelog entries shown before truncating to a 'full changelog' link"
+    required: false
+    default: "12"
+  ref:
+    description: "Git ref the release was cut from"
+    required: false
+    default: ${{ github.ref_name }}
+  sha:
+    description: "Commit the release was cut from"
+    required: false
+    default: ${{ github.sha }}
+  actor:
+    description: "Who triggered the release"
+    required: false
+    default: ${{ github.actor }}
+  repo:
+    description: "Repository for links; defaults to the current one"
+    required: false
+    default: ${{ github.repository }}
+  run_id:
+    description: "Workflow run id for the footer link; defaults to the current run"
+    required: false
+    default: ${{ github.run_id }}
+  release_url:
+    description: "Release page URL; defaults to <server>/<repo>/releases/tag/<tag>"
+    required: false
+    default: ""
+  dry_run:
+    description: "Render the message but skip sending (for tests)"
+    required: false
+    default: "false"
+
+outputs:
+  message:
+    description: "The rendered HTML message"
+    value: ${{ steps.render.outputs.message }}
+  sent:
+    description: "true if the message was delivered to Telegram"
+    value: ${{ steps.report.outputs.sent }}
+
+runs:
+  using: composite
+  steps:
+    - id: render
+      shell: bash
+      env:
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_PROMOTED_FROM: ${{ inputs.promoted_from }}
+        INPUT_CHANGELOG: ${{ inputs.changelog }}
+        INPUT_EXTRA: ${{ inputs.extra }}
+        INPUT_MAX_ENTRIES: ${{ inputs.changelog_max_entries }}
+        INPUT_REF: ${{ inputs.ref }}
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_ACTOR: ${{ inputs.actor }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_RUN_ID: ${{ inputs.run_id }}
+        INPUT_RELEASE_URL: ${{ inputs.release_url }}
+      run: |
+        set -euo pipefail
+
+        esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<< "$1"; }
+
+        status="${INPUT_STATUS:-success}"
+        channel="${INPUT_CHANNEL:-stable}"
+        max_entries="${INPUT_MAX_ENTRIES:-12}"
+        project="$(esc "${INPUT_PROJECT}")"
+        tag="$(esc "${INPUT_TAG}")"
+        ref="$(esc "${INPUT_REF}")"
+        actor="$(esc "${INPUT_ACTOR}")"
+
+        server="${GITHUB_SERVER_URL:-https://github.com}"
+        repo="${INPUT_REPO}"
+        run_id="${INPUT_RUN_ID}"
+
+        release_url="${INPUT_RELEASE_URL}"
+        if [[ -z "${release_url}" && -n "${INPUT_TAG}" ]]; then
+          release_url="${server}/${repo}/releases/tag/${INPUT_TAG}"
+        fi
+        run_url=""
+        if [[ -n "${repo}" && -n "${run_id}" ]]; then
+          run_url="${server}/${repo}/actions/runs/${run_id}"
+        fi
+
+        sha_part=""
+        if [[ -n "${INPUT_SHA}" ]]; then
+          sha_part=" @ ${INPUT_SHA:0:7}"
+        fi
+        src="${ref}${sha_part} · 👤 ${actor}"
+
+        if [[ "${status}" == "failure" || "${status}" == "cancelled" ]]; then
+          if [[ "${status}" == "cancelled" ]]; then
+            msg="⚪ <b>Release cancelled — ${project}</b>"
+          else
+            msg="❌ <b>Release failed — ${project}</b>"
+          fi
+          msg+=$'\n'"${src}"
+        else
+          if [[ "${channel}" == "pre-release" ]]; then
+            msg="🧪 <b>${project} ${tag}</b> — pre-release"
+          else
+            msg="🚀 <b>${project} ${tag}</b> — stable release"
+          fi
+          if [[ -n "${INPUT_PROMOTED_FROM}" ]]; then
+            msg+=$'\n'"⬆️ promoted from $(esc "${INPUT_PROMOTED_FROM}")"
+          fi
+          msg+=$'\n'"📦 <a href=\"${release_url}\">${tag}</a> · ${src}"
+
+          if [[ -n "${INPUT_CHANGELOG}" ]]; then
+            body="$(printf '%s' "${INPUT_CHANGELOG}" \
+              | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+              | sed -E -e 's|^##[[:space:]]*(.+)$|<b>\1</b>|' -e 's/^- /• /' \
+              | sed -e '/^[[:space:]]*$/d')"
+
+            total="$(grep -c '^• ' <<< "${body}" || true)"
+            if (( total > max_entries )); then
+              over=$((total - max_entries))
+              shown=0
+              trunc=""
+              while IFS= read -r line; do
+                if [[ "${line}" == "• "* ]]; then
+                  shown=$((shown + 1))
+                  (( shown > max_entries )) && continue
+                elif (( shown >= max_entries )); then
+                  continue
+                fi
+                trunc+="${line}"$'\n'
+              done <<< "${body}"
+              body="${trunc}…and ${over} more — <a href=\"${release_url}\">full changelog</a>"
+            fi
+            msg+=$'\n'$'\n'"${body}"
+          fi
+
+          if [[ -n "${INPUT_EXTRA}" ]]; then
+            msg+=$'\n'$'\n'"$(esc "${INPUT_EXTRA}")"
+          fi
+        fi
+
+        if [[ -n "${run_url}" ]]; then
+          msg+=$'\n'$'\n'"▶️ <a href=\"${run_url}\">workflow run</a>"
+        fi
+
+        msg="${msg:0:3900}"
+
+        printf '%s' "${msg}" > "${GITHUB_WORKSPACE:-.}/.release-notify-message.html"
+        echo "--- release-notify message ---"
+        echo "${msg}"
+        echo "------------------------------"
+        {
+          echo "message<<__RN_EOF__"
+          printf '%s\n' "${msg}"
+          echo "__RN_EOF__"
+        } >> "${GITHUB_OUTPUT}"
+
+    - id: send
+      if: ${{ inputs.dry_run != 'true' }}
+      continue-on-error: true
+      uses: appleboy/telegram-action@v1.1.1
+      with:
+        to: ${{ inputs.telegram_chat }}
+        token: ${{ inputs.telegram_token }}
+        format: html
+        disable_web_page_preview: true
+        disable_notification: ${{ inputs.channel == 'pre-release' && inputs.status == 'success' }}
+        message_file: .release-notify-message.html
+
+    - id: report
+      if: always()
+      shell: bash
+      env:
+        OUTCOME: ${{ steps.send.outcome }}
+      run: |
+        case "${OUTCOME}" in
+          success)
+            echo "sent=true" >> "${GITHUB_OUTPUT}"
+            echo "Telegram message delivered"
+            ;;
+          skipped)
+            echo "sent=false" >> "${GITHUB_OUTPUT}"
+            echo "Telegram send skipped (dry_run)"
+            ;;
+          *)
+            echo "sent=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::Telegram delivery failed (release-notify) — check TELEGRAM_* secrets"
+            ;;
+        esac
+
+branding:
+  icon: "send"
+  color: "blue"

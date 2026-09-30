@@ -1,0 +1,90 @@
+name: "Notify Telegram"
+author: "klever-coex"
+description: "Send a Telegram message about a CI event (release published, image artifacts ready, failure). Bare Bot API call, no third-party dependencies."
+
+inputs:
+  telegram_token:
+    description: "Telegram bot token (from BotFather)"
+    required: true
+  telegram_chat:
+    description: "Target chat id (user/group/channel)"
+    required: true
+  status:
+    description: "Job conclusion to report: success, failure, cancelled, custom"
+    required: false
+    default: "success"
+  title:
+    description: "First line of the message"
+    required: true
+  message:
+    description: "Optional body: details, links, versions"
+    required: false
+    default: ""
+  repo:
+    description: "Repository for the run link; defaults to the current one"
+    required: false
+    default: ""
+  run_id:
+    description: "Run id for the link; defaults to the current run"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_MESSAGE: ${{ inputs.message }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_RUN_ID: ${{ inputs.run_id }}
+      run: |
+        set -euo pipefail
+
+        # status marker
+        case "${INPUT_STATUS}" in
+          success)   marker="✅" ;;
+          failure)   marker="❌" ;;
+          cancelled) marker="⚪" ;;
+          *)         marker="ℹ️" ;;
+        esac
+
+        text="${marker} ${INPUT_TITLE}"
+
+        # optional body
+        if [[ -n "${INPUT_MESSAGE}" ]]; then
+          text="${text}
+        ${INPUT_MESSAGE}"
+        fi
+
+        # optional run link
+        repo="${INPUT_REPO:-${GITHUB_REPOSITORY:-}}"
+        run_id="${INPUT_RUN_ID:-${GITHUB_RUN_ID:-}}"
+        if [[ -n "${repo}" && -n "${run_id}" ]]; then
+          text="${text}
+        ${GITHUB_SERVER_URL}/${repo}/actions/runs/${run_id}"
+        fi
+
+        # escape for JSON via jq (handles quotes/newlines)
+        payload="$(jq -n --arg chat "${{ inputs.telegram_chat }}" \
+                        --arg token_repo "n/a" \
+                        --arg text "${text}" \
+                        '{chat_id: $chat, text: $text}')"
+
+        http_code="$(curl -s -o /tmp/tg-response.json -w '%{http_code}' \
+          -X POST "https://api.telegram.org/bot${{ inputs.telegram_token }}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d "${payload}")"
+
+        if [[ "${http_code}" != "200" ]]; then
+          echo "::warning::Telegram notify failed (HTTP ${http_code}): $(head -c 300 /tmp/tg-response.json)"
+        else
+          echo "Telegram message sent"
+        fi
+        
+        rm -f /tmp/tg-response.json
+
+branding:
+  icon: "send"
+  color: "blue"

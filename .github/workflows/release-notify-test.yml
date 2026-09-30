@@ -1,0 +1,265 @@
+name: Release Notify Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      send:
+        description: "Also send real messages to the Telegram channel (needs TELEGRAM_* secrets)"
+        type: boolean
+        default: false
+      tag:
+        description: "Tag used for the real send"
+        default: "v0.0.0-dispatch"
+      channel:
+        description: "Channel used for the real send"
+        type: choice
+        options: [stable, pre-release]
+        default: stable
+  push:
+    branches: [master]
+    paths:
+      - ".github/actions/release-notify/**"
+      - ".github/workflows/release-notify-test.yml"
+  pull_request:
+    paths:
+      - ".github/actions/release-notify/**"
+      - ".github/workflows/release-notify-test.yml"
+
+permissions: {}
+
+concurrency:
+  group: release-notify-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Message format scenarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Scenario — stable release
+        id: stable
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+          changelog: |
+            ## Features
+            - nav: add obstacle avoidance (#42)
+            - ui: brightness control for led strip (#41)
+
+            ## Bug Fixes
+            - http: router panic on empty path (#40)
+
+      - name: Assert — stable release
+        env:
+          MSG: ${{ steps.stable.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "🚀 <b>klever-ci v1.2.3</b> — stable release" <<< "$MSG"
+          grep -q "master @ a1b2c3d · 👤 motya" <<< "$MSG"
+          grep -q '<b>Features</b>' <<< "$MSG"
+          grep -q "• nav: add obstacle avoidance (#42)" <<< "$MSG"
+          grep -q '<b>Bug Fixes</b>' <<< "$MSG"
+          grep -q "• http: router panic on empty path (#40)" <<< "$MSG"
+          grep -q "releases/tag/v1.2.3" <<< "$MSG"
+          grep -q "actions/runs/" <<< "$MSG"
+          grep -q ">workflow run</a>" <<< "$MSG"
+          ! grep -q '^## ' <<< "$MSG"
+          ! grep -q '^- ' <<< "$MSG"
+          ! grep -q 'and .* more' <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — pre-release with extra note
+        id: rc
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3-rc.1
+          channel: pre-release
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+          extra: |
+            Image build will need a manual dispatch
+
+      - name: Assert — pre-release with extra note
+        env:
+          MSG: ${{ steps.rc.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "🧪 <b>klever-ci v1.2.3-rc.1</b> — pre-release" <<< "$MSG"
+          grep -q "Image build will need a manual dispatch" <<< "$MSG"
+          grep -q "releases/tag/v1.2.3-rc.1" <<< "$MSG"
+          ! grep -q "promoted from" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — promoted from rc
+        id: promoted
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          promoted_from: v1.2.3-rc.2
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+
+      - name: Assert — promoted from rc
+        env:
+          MSG: ${{ steps.promoted.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "🚀 <b>klever-ci v1.2.3</b> — stable release" <<< "$MSG"
+          grep -q "⬆️ promoted from v1.2.3-rc.2" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — changelog truncation (7 entries, max 5)
+        id: trunc
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          changelog_max_entries: "5"
+          changelog: |
+            ## Features
+            - one (#1)
+            - two (#2)
+            - three (#3)
+            - four (#4)
+            - five (#5)
+            - six (#6)
+            - seven (#7)
+
+      - name: Assert — changelog truncation
+        env:
+          MSG: ${{ steps.trunc.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "• one (#1)" <<< "$MSG"
+          grep -q "• five (#5)" <<< "$MSG"
+          grep -q "…and 2 more — <a href=" <<< "$MSG"
+          grep -q ">full changelog</a>" <<< "$MSG"
+          ! grep -q "• six (#6)" <<< "$MSG"
+          ! grep -q "• seven (#7)" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — HTML escaping of changelog
+        id: escape
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          project: klever-ci
+          tag: v1.2.3
+          channel: stable
+          changelog: |
+            ## Bug Fixes
+            - http: drop <script> tags & quotes ("x" < "y")
+
+      - name: Assert — HTML escaping
+        env:
+          MSG: ${{ steps.escape.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "• http: drop &lt;script&gt; tags &amp; quotes" <<< "$MSG"
+          ! grep -q "<script>" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — failed release
+        id: failure
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          status: failure
+          project: klever-ci
+          tag: v1.2.3
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+
+      - name: Assert — failed release
+        env:
+          MSG: ${{ steps.failure.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "❌ <b>Release failed — klever-ci</b>" <<< "$MSG"
+          grep -q "master @ a1b2c3d4 · 👤 motya" <<< "$MSG"
+          ! grep -q "📦" <<< "$MSG"
+          ! grep -q "releases/tag" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — cancelled release
+        id: cancelled
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          status: cancelled
+          project: klever-ci
+          ref: master
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+
+      - name: Assert — cancelled release
+        env:
+          MSG: ${{ steps.cancelled.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "⚪ <b>Release cancelled — klever-ci</b>" <<< "$MSG"
+          echo "OK"
+
+  send:
+    name: Real send to Telegram
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.send
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Send test message
+        id: send
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          telegram_chat: ${{ secrets.TELEGRAM_TO }}
+          project: klever-ci
+          tag: ${{ inputs.tag }}
+          channel: ${{ inputs.channel }}
+          extra: test message from release-notify-test
+          changelog: |
+            ## Features
+            - release-notify: smoke test via workflow_dispatch
+
+      - name: Check delivery
+        env:
+          SENT: ${{ steps.send.outputs.sent }}
+        run: |
+          set -euo pipefail
+          if [[ "${SENT}" != "true" ]]; then
+            echo "Delivery failed — check TELEGRAM_BOT_TOKEN / TELEGRAM_TO secrets and bot chat access" >&2
+            exit 1
+          fi
+          echo "Delivered"
