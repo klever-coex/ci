@@ -8,4 +8,6 @@ export default defineConfig({
   shims: true,
   clean: true,
   sourcemap: false,
+  // everything must land in the bundle: the runner executes dist/ without node_modules
+  noExternal: [/@actions\//],
 })

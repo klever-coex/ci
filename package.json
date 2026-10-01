@@ -11,10 +11,8 @@
     "test": "vitest run",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build && git diff --exit-code -- .github/actions"
   },
-  "dependencies": {
-    "@actions/core": "^1.11.1"
-  },
   "devDependencies": {
+    "@actions/core": "^1.11.1",
     "@types/node": "^24.19.0",
     "handlebars": "^4.7.8",
     "oxlint": "^1.71.0",
