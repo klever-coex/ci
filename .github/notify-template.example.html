@@ -1,6 +1,5 @@
-{{HEADER}}
-🔔 CUSTOM: {{PROJECT}} {{TAG}} ({{CHANNEL}})
+{{#if failed}}❌ {{project}}{{else}}✅ {{project}}{{/if}}
+🔔 CUSTOM: {{project}} {{tag}} ({{channel}})
 
-{{CHANGELOG}}
-
-by {{ACTOR}} · {{FOOTER}}
+{{#if changelogHtml}}{{{changelogHtml}}}{{/if}}
+by {{actor}} · {{#if runUrl}}<a href="{{runUrl}}">workflow run</a>{{/if}}

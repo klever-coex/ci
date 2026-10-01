@@ -2,6 +2,9 @@ name: "Release Notify"
 author: "klever-coex"
 description: Formatted Telegram notification about a release
 
+# Layout lives in templates/default.hbs (Handlebars), TypeScript logic in src/.
+# dist/index.js is the committed tsup bundle — run `npm run build` after edits.
+
 inputs:
   telegram_token:
     description: "Telegram bot token (from BotFather)"
@@ -41,13 +44,6 @@ inputs:
     description: "Plain-text lines appended before the footer (e.g. warnings)"
     required: false
     default: ""
-  template:
-    description: >-
-      Path to a custom message template in the caller's repo (relative to the
-      workspace), same placeholders as the bundled template.html. Defaults to
-      the template shipped with this action.
-    required: false
-    default: ""
   changelog_max_entries:
     description: "Changelog entries shown before truncating to a 'full changelog' link"
     required: false
@@ -76,6 +72,12 @@ inputs:
     description: "Release page URL; defaults to <server>/<repo>/releases/tag/<tag>"
     required: false
     default: ""
+  template:
+    description: >-
+      Path to a custom Handlebars template in the caller's repo (relative to the
+      workspace). Same helpers and variables as templates/default.hbs.
+    required: false
+    default: ""
   dry_run:
     description: "Render the message but skip sending (for tests)"
     required: false
@@ -84,53 +86,12 @@ inputs:
 outputs:
   message:
     description: "The rendered HTML message"
-    value: ${{ steps.render.outputs.message }}
   sent:
     description: "true if the message was delivered to Telegram"
-    value: ${{ steps.report.outputs.sent }}
 
 runs:
-  using: composite
-  steps:
-    - id: render
-      shell: bash
-      env:
-        INPUT_STATUS: ${{ inputs.status }}
-        INPUT_KIND: ${{ inputs.kind }}
-        INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_TAG: ${{ inputs.tag }}
-        INPUT_CHANNEL: ${{ inputs.channel }}
-        INPUT_PROMOTED_FROM: ${{ inputs.promoted_from }}
-        INPUT_CHANGELOG: ${{ inputs.changelog }}
-        INPUT_EXTRA: ${{ inputs.extra }}
-        INPUT_MAX_ENTRIES: ${{ inputs.changelog_max_entries }}
-        INPUT_REF: ${{ inputs.ref }}
-        INPUT_SHA: ${{ inputs.sha }}
-        INPUT_ACTOR: ${{ inputs.actor }}
-        INPUT_REPO: ${{ inputs.repo }}
-        INPUT_RUN_ID: ${{ inputs.run_id }}
-        INPUT_RELEASE_URL: ${{ inputs.release_url }}
-        INPUT_TEMPLATE: ${{ inputs.template }}
-      run: '"${{ github.action_path }}/render.sh"'
-
-    - id: send
-      if: ${{ inputs.dry_run != 'true' }}
-      continue-on-error: true
-      uses: appleboy/telegram-action@v1.1.1
-      with:
-        to: ${{ inputs.telegram_chat }}
-        token: ${{ inputs.telegram_token }}
-        format: html
-        disable_web_page_preview: true
-        disable_notification: ${{ inputs.channel == 'pre-release' && inputs.status == 'success' }}
-        message_file: .release-notify-message.html
-
-    - id: report
-      if: always()
-      shell: bash
-      env:
-        OUTCOME: ${{ steps.send.outcome }}
-      run: '"${{ github.action_path }}/report.sh"'
+  using: node24
+  main: dist/index.cjs
 
 branding:
   icon: "send"
