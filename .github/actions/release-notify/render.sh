@@ -10,6 +10,8 @@ channel="${INPUT_CHANNEL:-stable}"
 max_entries="${INPUT_MAX_ENTRIES:-12}"
 failed=0
 [[ "${status}" == "failure" || "${status}" == "cancelled" ]] && failed=1
+build=0
+[[ "${INPUT_KIND:-release}" == "build" ]] && build=1
 
 project="$(esc "${INPUT_PROJECT}")"
 tag="$(esc "${INPUT_TAG}")"
@@ -30,7 +32,16 @@ sha=""
 src="${ref}${sha} · 👤 ${actor}"
 
 # --- header + release line ---------------------------------------------------
-if (( failed )); then
+if (( build )); then
+  case "${status}" in
+    failure)   header="❌ <b>Build failed — ${project}</b>" ;;
+    cancelled) header="⚪ <b>Build cancelled — ${project}</b>" ;;
+    *)         header="✅ <b>Build succeeded — ${project}</b>" ;;
+  esac
+  promoted=""
+  release_line=""
+  src_line="${src}"
+elif (( failed )); then
   case "${status}" in
     cancelled) header="⚪ <b>Release cancelled — ${project}</b>" ;;
     *)         header="❌ <b>Release failed — ${project}</b>" ;;

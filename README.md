@@ -28,6 +28,24 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
     extra: "Image build will need a manual dispatch"
 ```
 
+`kind: build` turns the action into a plain build-result ping (image builds, long
+jobs): ✅/❌/⚪ `Build <succeeded|failed|cancelled> — project` header, context
+line (`ref @ sha · actor`), `extra` (e.g. image/config/upload info) and a run
+link; no release tag/changelog blocks.
+
+```yaml
+- uses: klever-coex/ci/.github/actions/release-notify@master
+  if: always()
+  with:
+    telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    telegram_chat: ${{ secrets.TELEGRAM_TO }}
+    kind: build
+    status: ${{ job.status }}
+    project: armbian-userpatches
+    ref: ${{ matrix.config }}
+    extra: "image: klever5-rpi5b (arm64) · clover2 @ v0.2.0 · uploaded to S3"
+```
+
 - Secrets per repo: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_TO`.
 - **Custom template**: a project can keep its own message layout in
   `.github/notify-template.html` (mikepenz-style, like `configuration` for

@@ -237,6 +237,56 @@ jobs:
           [[ "${OUTCOME}" == "failure" ]]
           echo "OK"
 
+      - name: Scenario — build success (kind build)
+        id: build-ok
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          kind: build
+          status: success
+          project: armbian-userpatches
+          ref: klever5-rpi5b
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+          extra: "image: klever5-rpi5b (arm64) · clover2 @ v0.2.0 · uploaded to S3"
+
+      - name: Assert — build succeeded
+        env:
+          MSG: ${{ steps.build-ok.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "✅ <b>Build succeeded — armbian-userpatches</b>" <<< "$MSG"
+          grep -q "klever5-rpi5b @ a1b2c3d · 👤 motya" <<< "$MSG"
+          grep -q "image: klever5-rpi5b (arm64)" <<< "$MSG"
+          ! grep -q "📦" <<< "$MSG"
+          ! grep -q "releases/tag" <<< "$MSG"
+          echo "OK"
+
+      - name: Scenario — build failure (kind build)
+        id: build-fail
+        uses: ./.github/actions/release-notify
+        with:
+          telegram_token: "000000:dummy"
+          telegram_chat: "-100000"
+          dry_run: true
+          kind: build
+          status: failure
+          project: armbian-userpatches
+          ref: clover2-vm-arm64
+          sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
+          actor: motya
+
+      - name: Assert — build failed
+        env:
+          MSG: ${{ steps.build-fail.outputs.message }}
+        run: |
+          set -euo pipefail
+          grep -q "❌ <b>Build failed — armbian-userpatches</b>" <<< "$MSG"
+          grep -q "clover2-vm-arm64 @ a1b2c3d" <<< "$MSG"
+          echo "OK"
+
       - name: Scenario — failed release
         id: failure
         uses: ./.github/actions/release-notify

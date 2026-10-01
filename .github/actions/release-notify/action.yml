@@ -2,9 +2,6 @@ name: "Release Notify"
 author: "klever-coex"
 description: Formatted Telegram notification about a release
 
-# Layout lives in template.html, bash logic in render.sh / report.sh.
-# This file is only the inputs/outputs contract and the send step.
-
 inputs:
   telegram_token:
     description: "Telegram bot token (from BotFather)"
@@ -16,6 +13,10 @@ inputs:
     description: "Job conclusion to report: success, failure, cancelled"
     required: false
     default: "success"
+  kind:
+    description: "release: release message (tag, changelog). build: plain build result (context line + extra)"
+    required: false
+    default: "release"
   project:
     description: "Project name in the header"
     required: false
@@ -95,6 +96,7 @@ runs:
       shell: bash
       env:
         INPUT_STATUS: ${{ inputs.status }}
+        INPUT_KIND: ${{ inputs.kind }}
         INPUT_PROJECT: ${{ inputs.project }}
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_CHANNEL: ${{ inputs.channel }}
