@@ -1,0 +1,25 @@
+{
+  "name": "klever-ci",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared GitHub Actions plumbing for klever-coex projects",
+  "scripts": {
+    "build": "tsup",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && git diff --exit-code -- .github/actions"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "handlebars": "^4.7.8",
+    "oxlint": "^1.71.0",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.0",
+    "vitest": "^3.2.7"
+  }
+}

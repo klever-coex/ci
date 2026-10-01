@@ -2,15 +2,19 @@
 
 Shared GitHub Actions plumbing for klever-coex projects.
 
+TypeScript + [Handlebars](https://handlebarsjs.com/) under the hood: actions are
+`node24` programs (`src/` → committed `dist/` bundle via tsup), message layout
+lives in `.hbs` templates. Dev: `npm run check` (oxlint + tsc + vitest + build +
+dist-sync).
+
 ## Actions
 
 ### `.github/actions/release-notify`
 
-Formatted Telegram notification about a release: 🚀 stable, 🧪 pre-release,
-⬆️ promoted rc, ❌/⚪ failure. Renders one HTML message (header, release link,
-ref @ sha · actor, grouped changelog, footer link to the workflow run) and sends
-it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
-(pinned `@v1.1.1`) — the only third-party dependency in this repo.
+Formatted Telegram notification about a release or a long build: 🚀 stable,
+🧪 pre-release, ⬆️ promoted rc, ✅/❌/⚪ build result, ❌ failure. Renders one
+HTML message and sends it straight to the Telegram Bot API — no third-party
+actions.
 
 ```yaml
 - name: Telegram notify
@@ -19,7 +23,7 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
   with:
     telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     telegram_chat: ${{ secrets.TELEGRAM_TO }}
-    status: ${{ job.status }}                       # adds ❌/⚪ failure message
+    status: ${{ job.status }}                       # success | failure | cancelled
     project: clover2
     tag: ${{ steps.prepare.outputs.tag }}
     channel: ${{ inputs.channel }}                  # stable | pre-release (rc → silent send)
@@ -28,43 +32,24 @@ it via [appleboy/telegram-action](https://github.com/appleboy/telegram-action)
     extra: "Image build will need a manual dispatch"
 ```
 
-`kind: build` turns the action into a plain build-result ping (image builds, long
-jobs): ✅/❌/⚪ `Build <succeeded|failed|cancelled> — project` header, context
-line (`ref @ sha · actor`), `extra` (e.g. image/config/upload info) and a run
-link; no release tag/changelog blocks.
-
-```yaml
-- uses: klever-coex/ci/.github/actions/release-notify@master
-  if: always()
-  with:
-    telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-    telegram_chat: ${{ secrets.TELEGRAM_TO }}
-    kind: build
-    status: ${{ job.status }}
-    project: armbian-userpatches
-    ref: ${{ matrix.config }}
-    extra: "image: klever5-rpi5b (arm64) · clover2 @ v0.2.0 · uploaded to S3"
-```
+`kind: build` turns the action into a plain build-result ping (image builds,
+long jobs): ✅/❌/⚪ `Build <succeeded|failed|cancelled> — project` header,
+context line (`ref @ sha · actor`), `extra` (e.g. image/config/upload info) and
+a run link; no release tag/changelog blocks.
 
 - Secrets per repo: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_TO`.
-- **Custom template**: a project can keep its own message layout in
-  `.github/notify-template.html` (mikepenz-style, like `configuration` for
-  changelog builder) and pass `template: .github/notify-template.html`.
-  See [`notify-template.example.html`](.github/notify-template.example.html).
-- `format: html` is used; changelog/extra text is HTML-escaped, so arbitrary
-  PR titles are safe to pass through.
-- Changelog longer than `changelog_max_entries` (default 12) is cut to
-  `…and N more — full changelog` linking to the release page.
+- **Templates are Handlebars** (`templates/default.hbs`): `{{var}}` is
+  HTML-escaped automatically, `{{{raw}}}` opts out, `{{#if}}`/`{{else}}` build
+  the layout. Helpers: `eq`, `shortSha`. View variables: `kind`, `status`,
+  `failed`, `cancelled`, `build`, `project`, `tag`, `channel`, `promotedFrom`,
+  `extra`, `src`, `ref`, `sha`, `actor`, `releaseUrl`, `runUrl`, `changelogHtml`.
+- **Custom template**: keep your own layout in the caller's repo (mikepenz-style)
+  and pass `template: .github/notify-template.html` (path relative to the
+  workspace). See [`notify-template.example.html`](.github/notify-template.example.html).
+  A missing template file fails the step; unknown variables render empty.
+- Messages are cut at 3900 chars (Telegram limit 4096).
 - Delivery problems are warnings, never job failures. `outputs.sent` says
   whether the message was delivered; `outputs.message` returns the rendered HTML.
-- Layout lives in [`template.html`](.github/actions/release-notify/template.html);
-  bash logic in `render.sh` / `report.sh` next to it. `action.yml` is only the
-  inputs/outputs contract and the send step — edit the template to change the
-  message shape, not YAML. Placeholders:
-  - blocks: `{{HEADER}}`, `{{PROMOTED}}`, `{{RELEASE_LINE}}`, `{{SRC}}`,
-    `{{CHANGELOG}}`, `{{EXTRA}}`, `{{FOOTER}}`
-  - scalars: `{{PROJECT}}`, `{{TAG}}`, `{{CHANNEL}}`, `{{ACTOR}}`, `{{REF}}`,
-    `{{SHA}}`, `{{STATUS}}`, `{{RELEASE_URL}}`, `{{RUN_URL}}`
-  - unknown placeholders resolve to empty; a missing template file fails the step.
-- Format is covered by `.github/workflows/release-notify-test.yml`
+- Format is covered by vitest unit tests (`tests/`) and the smoke workflow
+  `.github/workflows/release-notify-test.yml`
   (runs on push/PR; `workflow_dispatch` with `send: true` sends a real message).

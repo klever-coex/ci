@@ -1,0 +1,22 @@
+{{#if build}}
+{{#if failed}}{{#if cancelled}}⚪ <b>Build cancelled — {{project}}</b>{{else}}❌ <b>Build failed — {{project}}</b>{{/if}}{{else}}✅ <b>Build succeeded — {{project}}</b>{{/if}}
+{{src}}
+{{else if failed}}
+{{#if cancelled}}⚪ <b>Release cancelled — {{project}}</b>{{else}}❌ <b>Release failed — {{project}}</b>{{/if}}
+{{src}}
+{{else}}
+{{#if (eq channel "pre-release")}}🧪 <b>{{project}} {{tag}}</b> — pre-release{{else}}🚀 <b>{{project}} {{tag}}</b> — stable release{{/if}}
+{{#if promotedFrom}}
+⬆️ promoted from {{promotedFrom}}
+{{/if}}
+📦 <a href="{{releaseUrl}}">{{tag}}</a> · {{src}}
+{{/if}}
+{{#if changelogHtml}}
+
+{{{changelogHtml}}}{{/if}}
+{{#if extra}}
+
+{{extra}}{{/if}}
+{{#if runUrl}}
+
+▶️ <a href="{{runUrl}}">workflow run</a>{{/if}}
