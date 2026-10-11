@@ -21,5 +21,37 @@ jobs:
 
       - run: npm ci
 
-      # lint + typecheck + vitest + build + dist-sync (git diff --exit-code)
       - run: npm run check
+
+  artifact-push-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fake artifacts
+        run: |
+          mkdir -p out
+          echo fake > out/klever5-rpi5b.img.xz
+          echo fake > out/klever5-rpi5b.img.xz.sha
+
+      - name: Dry-run upload plan
+        id: plan
+        uses: ./.github/actions/artifact-push
+        with:
+          artifacts: "out/*.xz out/*.sha"
+          product: klever5
+          version: 0.10.0
+          channel: stable
+          platform: rpi5b
+          dry_run: true
+
+      - name: Check plan
+        env:
+          KEYS: ${{ steps.plan.outputs.keys }}
+          COUNT: ${{ steps.plan.outputs.count }}
+        run: |
+          set -euo pipefail
+          [[ "${COUNT}" == "2" ]]
+          grep -qx "stable/klever5/rpi5b-0.10.0.xz" <<< "$KEYS"
+          grep -qx "stable/klever5/rpi5b-0.10.0.sha" <<< "$KEYS"
+          echo "OK"

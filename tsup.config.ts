@@ -1,13 +1,23 @@
 import { defineConfig } from 'tsup'
 
-export default defineConfig({
-  entry: ['.github/actions/release-notify/src/index.ts'],
-  outDir: '.github/actions/release-notify/dist',
+const common = {
   format: ['cjs'],
   target: 'node24',
   shims: true,
   clean: true,
   sourcemap: false,
-  // everything must land in the bundle: the runner executes dist/ without node_modules
   noExternal: [/@actions\//],
-})
+} as const
+
+export default defineConfig([
+  {
+    ...common,
+    entry: ['.github/actions/release-notify/src/index.ts'],
+    outDir: '.github/actions/release-notify/dist',
+  },
+  {
+    ...common,
+    entry: ['.github/actions/artifact-push/src/index.ts'],
+    outDir: '.github/actions/artifact-push/dist',
+  },
+])

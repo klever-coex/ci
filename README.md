@@ -9,6 +9,39 @@ dist-sync).
 
 ## Actions
 
+### `.github/actions/artifact-push`
+
+Uploads build artifacts to the S3/MinIO artifact store with
+[klever-doc.tech](https://klever-doc.tech) hub tags. The hub filters by object
+tags only (`product`, `version`, `channel`, `type`, `platform`) — this action
+tags and keys objects so they land in the hub index.
+
+```yaml
+- uses: klever-coex/clover2-cli@v0.0.6        # installs the clover2 CLI
+- uses: klever-coex/ci/.github/actions/artifact-push@master
+  with:
+    artifacts: "build/output/images/*.xz build/output/images/*.sha"
+    product: klever5                            # products.yaml slug
+    version: ${{ needs.detect-mode.outputs.version }}   # empty = clover2 version compose
+    channel: ""                                 # empty = map build_mode (release→stable, pre-release→rc, else dev)
+    platform: ${{ matrix.config }}              # e.g. rpi5b
+    s3-endpoint: ${{ secrets.MINIO_ENDPOINT }}  # or CLOVER2_S3_* env
+    s3-access-key: ${{ secrets.MINIO_ACCESS_KEY }}
+    s3-secret-key: ${{ secrets.MINIO_SECRET_KEY }}
+```
+
+- Key layout: `{channel}/{product}/{platform}-{version}.{ext}` (hub ignores
+  keys; this is for humans and the CLI).
+- Tags: `product`, `version`, `channel`, `type` (auto: image for
+  img/xz/qcow2/ova/vdi/vmdk, extra for sha/zip/ovf/...; override with `type`),
+  `platform`, plus `sha`/`run_id` for traceability.
+- Channels are the hub dictionary: `stable | rc | dev` — note `pre-release`
+  build_mode maps to `rc`, not `dev`.
+- Uploads run through `clover2 artifact push` — the CLI must be on PATH
+  (add the `klever-coex/clover2-cli` action step first). `dry_run: true`
+  prints the plan without touching S3 and needs no CLI.
+- Outputs: `keys` (object keys, one per line), `count`.
+
 ### `.github/actions/release-notify`
 
 Formatted Telegram notification about a release or a long build: 🚀 stable,
