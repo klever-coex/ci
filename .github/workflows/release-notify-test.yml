@@ -345,7 +345,7 @@ jobs:
         uses: ./.github/actions/release-notify
         with:
           telegram_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          telegram_chat: ${{ secrets.TELEGRAM_TO }}
+          telegram_chat: ${{ secrets.TELEGRAM_TO_TEST }}
           project: klever-ci
           tag: ${{ inputs.tag }}
           channel: ${{ inputs.channel }}
@@ -360,7 +360,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${SENT}" != "true" ]]; then
-            echo "Delivery failed — check TELEGRAM_BOT_TOKEN / TELEGRAM_TO secrets and bot chat access" >&2
+            echo "Delivery failed — check TELEGRAM_BOT_TOKEN / TELEGRAM_TO_TEST secrets and bot chat access" >&2
             exit 1
           fi
           echo "Delivered"

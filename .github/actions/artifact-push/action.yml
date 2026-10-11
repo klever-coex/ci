@@ -1,0 +1,69 @@
+name: "Artifact Push"
+author: "klever-coex"
+description: >-
+  Upload build artifacts to the S3/MinIO artifact store with klever-doc.tech hub
+  tags: product/version/channel/type/platform. Keys follow
+  {channel}/{product}/{platform}-{version}.{ext}. Requires the clover2 CLI on
+  PATH (klever-coex/clover2-cli action) unless dry-run.
+
+inputs:
+  artifacts:
+    description: "Files to upload: paths/globs, space-, comma- or newline-separated (relative to the workspace)"
+    required: true
+  product:
+    description: "Hub product slug (products.yaml), e.g. klever5, simulator — the entry filter tag"
+    required: true
+  bucket:
+    description: "S3 bucket"
+    required: false
+    default: "clover2"
+  version:
+    description: "Artifact version; empty = clover2 version compose in the workspace (tooling.json required)"
+    required: false
+    default: ""
+  channel:
+    description: "stable | rc | dev; empty = mapped from build_mode (release→stable, pre-release→rc, else dev)"
+    required: false
+    default: ""
+  type:
+    description: "Override the hub type tag for all files; empty = auto by extension (image | extra)"
+    required: false
+    default: ""
+  platform:
+    description: "Platform tag (rpi5b, amd64, ...); also names the object"
+    required: false
+    default: ""
+  sha:
+    description: "Short commit hash tag; empty = git_hash from version compose"
+    required: false
+    default: ""
+  s3-endpoint:
+    description: "MinIO/S3 endpoint; empty = CLOVER2_S3_ENDPOINT env"
+    required: false
+    default: ""
+  s3-access-key:
+    description: "S3 access key; empty = CLOVER2_S3_ACCESS_KEY env"
+    required: false
+    default: ""
+  s3-secret-key:
+    description: "S3 secret key; empty = CLOVER2_S3_SECRET_KEY env"
+    required: false
+    default: ""
+  dry_run:
+    description: "Print the upload plan without touching S3 (no clover2 CLI needed)"
+    required: false
+    default: "false"
+
+outputs:
+  keys:
+    description: "Uploaded object keys, one per line"
+  count:
+    description: "Number of uploaded objects"
+
+runs:
+  using: node24
+  main: dist/index.cjs
+
+branding:
+  icon: "upload-cloud"
+  color: "blue"
