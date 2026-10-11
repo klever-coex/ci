@@ -22,7 +22,7 @@ inputs:
     required: false
     default: ""
   channel:
-    description: "stable | rc | dev; empty = mapped from build_mode (release→stable, pre-release→rc, else dev)"
+    description: "stable | rc | dev; empty = mapped from build_mode (release/stable, pre-release/rc, else dev)"
     required: false
     default: ""
   type:

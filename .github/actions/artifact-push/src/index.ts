@@ -97,7 +97,7 @@ function main(): void {
 
   core.info(
     plans
-      .map((p) => `${relative(workspace, p.file)} → ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(', ')}]`)
+      .map((p) => `${relative(workspace, p.file)}: ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(', ')}]`)
       .join('\n'),
   )
   core.setOutput('keys', plans.map((p) => p.key).join('\n'))

@@ -20075,7 +20075,7 @@ function main() {
     plans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }));
   }
   core.info(
-    plans.map((p) => `${(0, import_node_path.relative)(workspace, p.file)} \u2192 ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(", ")}]`).join("\n")
+    plans.map((p) => `${(0, import_node_path.relative)(workspace, p.file)}: ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(", ")}]`).join("\n")
   );
   core.setOutput("keys", plans.map((p) => p.key).join("\n"));
   core.setOutput("count", String(plans.length));

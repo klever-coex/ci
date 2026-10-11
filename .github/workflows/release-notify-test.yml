@@ -186,6 +186,16 @@ jobs:
           ! grep -q "<script>" <<< "$MSG"
           echo "OK"
 
+      - name: Custom template fixture
+        run: |
+          printf '%s\n' \
+            '{{#if failed}}❌ {{project}}{{else}}✅ {{project}}{{/if}}' \
+            '🔔 CUSTOM: {{project}} {{tag}} ({{channel}})' \
+            '' \
+            '{{#if changelogHtml}}{{{changelogHtml}}}{{/if}}' \
+            'by {{actor}} · {{#if runUrl}}<a href="{{runUrl}}">workflow run</a>{{/if}}' \
+            > notify-fixture.hbs
+
       - name: Scenario — custom template from the caller's .github
         id: custom
         uses: ./.github/actions/release-notify
@@ -196,7 +206,7 @@ jobs:
           project: klever-ci
           tag: v1.2.3
           channel: stable
-          template: .github/notify-template.example.html
+          template: notify-fixture.hbs
           ref: master
           sha: a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
           actor: motya
