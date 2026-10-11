@@ -43,9 +43,13 @@ function expandArtifacts(raw: string, workspace: string): string[] {
   for (const p of patterns) {
     const abs = isAbsolute(p) ? p : resolve(workspace, p)
     const matches = existsSync(abs) && !abs.includes('*') ? [abs] : globSync(abs)
-    if (matches.length === 0) throw new Error(`artifact-push: no files match "${p}"`)
+    if (matches.length === 0) {
+      core.info(`artifact-push: no files match "${p}" — pattern skipped`)
+      continue
+    }
     for (const m of matches) files.add(m)
   }
+  if (files.size === 0) throw new Error(`artifact-push: no files match any pattern`)
   return [...files].sort()
 }
 
@@ -77,8 +81,9 @@ function main(): void {
 
   const composed = composeVersion(workspace)
   const version = core.getInput('version') || composed?.version || ''
-  const channel = mapChannel(core.getInput('channel'), composed?.buildMode ?? '')
-  const sha = core.getInput('sha') || composed?.gitHash || ''
+  const buildMode = composed?.buildMode ?? core.getInput('build-mode')
+  const channel = mapChannel(core.getInput('channel'), buildMode)
+  const sha = (core.getInput('sha') || composed?.gitHash || '').slice(0, 7)
   const runId = process.env.GITHUB_RUN_ID ?? ''
 
   if (version === '') {
@@ -89,19 +94,31 @@ function main(): void {
   }
 
   const files = expandArtifacts(artifacts, workspace)
-  let plans = planUploads(files, { product, version, channel, platform, sha, runId })
+  const { uploads: plans, skipped } = planUploads(files, {
+    product,
+    version,
+    channel,
+    platform,
+    sha,
+    runId,
+  })
+  for (const f of skipped) core.notice(`skipped (extension outside whitelist): ${relative(workspace, f)}`)
+  let finalPlans = plans
   if (typeOverride !== '') {
     core.info(`type override: ${typeOverride} for all files`)
-    plans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }))
+    finalPlans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }))
   }
 
   core.info(
-    plans
-      .map((p) => `${relative(workspace, p.file)}: ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(', ')}]`)
+    finalPlans
+      .map(
+        (p) =>
+          `${relative(workspace, p.file)} → ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(', ')}]`,
+      )
       .join('\n'),
   )
-  core.setOutput('keys', plans.map((p) => p.key).join('\n'))
-  core.setOutput('count', String(plans.length))
+  core.setOutput('keys', finalPlans.map((p) => p.key).join('\n'))
+  core.setOutput('count', String(finalPlans.length))
 
   if (dryRun) {
     core.info('dry run — nothing uploaded')
@@ -125,8 +142,8 @@ function main(): void {
     if (v !== '') env[envName] = v
   }
 
-  for (const plan of plans) pushOne(plan, bucket, workspace, env)
-  core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`)
+  for (const plan of finalPlans) pushOne(plan, bucket, workspace, env)
+  core.info(`uploaded ${finalPlans.length} artifact(s) to bucket ${bucket}`)
 }
 
 main()

@@ -37,8 +37,9 @@ describe('typeForExt', () => {
     }
   })
 
-  it('fails on unknown extensions', () => {
-    expect(() => typeForExt('exe')).toThrow(/unknown artifact extension/)
+  it('unknown extensions are skipped, not errors', () => {
+    expect(typeForExt('exe')).toBeNull()
+    expect(typeForExt('json')).toBeNull()
   })
 })
 
@@ -67,10 +68,15 @@ describe('planUploads', () => {
   }
 
   it('plans image + checksum pair with hub tags', () => {
-    const plans = planUploads(
-      ['build/output/images/klever5-rpi5b.img.xz', 'build/output/images/klever5-rpi5b.img.xz.sha'],
+    const { uploads: plans } = planUploads(
+      [
+        'build/output/images/klever5-rpi5b.img.xz',
+        'build/output/images/klever5-rpi5b.img.xz.sha',
+        'build/output/images/klever5-rpi5b.img.xz.assets.json',
+      ],
       base,
     )
+    expect(plans).toHaveLength(2)
     expect(plans[0]?.key).toBe('stable/klever5/rpi5b-0.10.0.xz')
     expect(plans[0]?.tags).toEqual({
       product: 'klever5',
@@ -85,8 +91,24 @@ describe('planUploads', () => {
     expect(plans[1]?.tags.type).toBe('extra')
   })
 
+  it('reports non-whitelisted files as skipped', () => {
+    const { uploads, skipped } = planUploads(
+      ['a.img.xz', 'a.img.xz.sha', 'a.img.xz.assets.json', 'Makefile'],
+      base,
+    )
+    expect(uploads.map((u) => u.key)).toEqual([
+      'stable/klever5/rpi5b-0.10.0.xz',
+      'stable/klever5/rpi5b-0.10.0.sha',
+    ])
+    expect(skipped).toEqual(['a.img.xz.assets.json', 'Makefile'])
+  })
+
+  it('fails when nothing survives the whitelist', () => {
+    expect(() => planUploads(['a.json'], base)).toThrow(/no uploadable artifacts/)
+  })
+
   it('omits optional tags when not given', () => {
-    const plans = planUploads(['a.qcow2'], { product: 'simulator', version: '1.0.0', channel: 'dev' })
+    const { uploads: plans } = planUploads(['a.qcow2'], { product: 'simulator', version: '1.0.0', channel: 'dev' })
     expect(plans[0]?.tags).toEqual({
       product: 'simulator',
       version: '1.0.0',
@@ -100,7 +122,5 @@ describe('planUploads', () => {
     expect(() => planUploads(['a.xz'], { product: 'p', version: '', channel: 'dev' })).toThrow(/version/)
   })
 
-  it('fails on extension-less files', () => {
-    expect(() => planUploads(['Makefile'], { product: 'p', version: '1', channel: 'dev' })).toThrow(/extension/)
-  })
+
 })

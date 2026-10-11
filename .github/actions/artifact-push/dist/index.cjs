@@ -19867,10 +19867,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports2.warning = warning;
-    function notice(message, properties = {}) {
+    function notice2(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports2.notice = notice;
+    exports2.notice = notice2;
     function info2(message) {
       process.stdout.write(message + os.EOL);
     }
@@ -19948,7 +19948,7 @@ var core = __toESM(require_core(), 1);
 init_cjs_shims();
 var CHANNELS = ["stable", "rc", "dev"];
 var IMAGE_EXTS = /* @__PURE__ */ new Set(["img", "xz", "qcow2", "ova", "vdi", "vmdk"]);
-var EXTRA_EXTS = /* @__PURE__ */ new Set(["sha", "zip", "ovf", "txt", "md5", "json"]);
+var EXTRA_EXTS = /* @__PURE__ */ new Set(["sha", "zip", "ovf", "txt", "md5"]);
 function mapChannel(channel, buildMode) {
   if (channel !== "") {
     if (!CHANNELS.includes(channel)) {
@@ -19969,9 +19969,7 @@ function typeForExt(ext) {
   const e = ext.toLowerCase();
   if (IMAGE_EXTS.has(e)) return "image";
   if (EXTRA_EXTS.has(e)) return "extra";
-  throw new Error(
-    `unknown artifact extension ".${ext}" for hub tagging; whitelist: ${[...IMAGE_EXTS, ...EXTRA_EXTS].join(", ")}`
-  );
+  return null;
 }
 function buildKey(o) {
   const prefix = o.platform ? `${o.platform}-` : "";
@@ -19980,11 +19978,16 @@ function buildKey(o) {
 function planUploads(files, opts) {
   if (opts.product === "") throw new Error("product is required (hub entry filter tag)");
   if (opts.version === "") throw new Error("version is required (pass input or tooling.json)");
-  return files.map((file) => {
+  const uploads = [];
+  const skipped = [];
+  for (const file of files) {
     const dot = file.lastIndexOf(".");
-    if (dot <= 0) throw new Error(`cannot determine extension of "${file}"`);
-    const ext = file.slice(dot + 1);
-    const type = typeForExt(ext);
+    const ext = dot > 0 ? file.slice(dot + 1) : "";
+    const type = ext !== "" ? typeForExt(ext) : null;
+    if (type === null) {
+      skipped.push(file);
+      continue;
+    }
     const key = buildKey({
       channel: opts.channel,
       product: opts.product,
@@ -20001,8 +20004,14 @@ function planUploads(files, opts) {
     if (opts.platform) tags.platform = opts.platform;
     if (opts.sha) tags.sha = opts.sha;
     if (opts.runId) tags.run_id = opts.runId;
-    return { file, key, tags };
-  });
+    uploads.push({ file, key, tags });
+  }
+  if (uploads.length === 0) {
+    throw new Error(
+      `no uploadable artifacts among ${files.length} file(s); whitelist: ${[...IMAGE_EXTS, ...EXTRA_EXTS].join(", ")}`
+    );
+  }
+  return { uploads, skipped };
 }
 
 // .github/actions/artifact-push/src/index.ts
@@ -20034,9 +20043,13 @@ function expandArtifacts(raw, workspace) {
   for (const p of patterns) {
     const abs = (0, import_node_path.isAbsolute)(p) ? p : (0, import_node_path.resolve)(workspace, p);
     const matches = (0, import_node_fs.existsSync)(abs) && !abs.includes("*") ? [abs] : (0, import_node_fs2.globSync)(abs);
-    if (matches.length === 0) throw new Error(`artifact-push: no files match "${p}"`);
+    if (matches.length === 0) {
+      core.info(`artifact-push: no files match "${p}" \u2014 pattern skipped`);
+      continue;
+    }
     for (const m of matches) files.add(m);
   }
+  if (files.size === 0) throw new Error(`artifact-push: no files match any pattern`);
   return [...files].sort();
 }
 function pushOne(plan, bucket, workspace, env) {
@@ -20059,8 +20072,9 @@ function main() {
   const dryRun = core.getInput("dry_run") === "true";
   const composed = composeVersion(workspace);
   const version = core.getInput("version") || composed?.version || "";
-  const channel = mapChannel(core.getInput("channel"), composed?.buildMode ?? "");
-  const sha = core.getInput("sha") || composed?.gitHash || "";
+  const buildMode = composed?.buildMode ?? core.getInput("build-mode");
+  const channel = mapChannel(core.getInput("channel"), buildMode);
+  const sha = (core.getInput("sha") || composed?.gitHash || "").slice(0, 7);
   const runId = process.env.GITHUB_RUN_ID ?? "";
   if (version === "") {
     core.setFailed(
@@ -20069,16 +20083,27 @@ function main() {
     return;
   }
   const files = expandArtifacts(artifacts, workspace);
-  let plans = planUploads(files, { product, version, channel, platform, sha, runId });
+  const { uploads: plans, skipped } = planUploads(files, {
+    product,
+    version,
+    channel,
+    platform,
+    sha,
+    runId
+  });
+  for (const f of skipped) core.notice(`skipped (extension outside whitelist): ${(0, import_node_path.relative)(workspace, f)}`);
+  let finalPlans = plans;
   if (typeOverride !== "") {
     core.info(`type override: ${typeOverride} for all files`);
-    plans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }));
+    finalPlans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }));
   }
   core.info(
-    plans.map((p) => `${(0, import_node_path.relative)(workspace, p.file)}: ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(", ")}]`).join("\n")
+    finalPlans.map(
+      (p) => `${(0, import_node_path.relative)(workspace, p.file)} \u2192 ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(", ")}]`
+    ).join("\n")
   );
-  core.setOutput("keys", plans.map((p) => p.key).join("\n"));
-  core.setOutput("count", String(plans.length));
+  core.setOutput("keys", finalPlans.map((p) => p.key).join("\n"));
+  core.setOutput("count", String(finalPlans.length));
   if (dryRun) {
     core.info("dry run \u2014 nothing uploaded");
     return;
@@ -20098,8 +20123,8 @@ function main() {
     const v = core.getInput(input);
     if (v !== "") env[envName] = v;
   }
-  for (const plan of plans) pushOne(plan, bucket, workspace, env);
-  core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`);
+  for (const plan of finalPlans) pushOne(plan, bucket, workspace, env);
+  core.info(`uploaded ${finalPlans.length} artifact(s) to bucket ${bucket}`);
 }
 main();
 /*! Bundled license information:

@@ -22,7 +22,11 @@ inputs:
     required: false
     default: ""
   channel:
-    description: "stable | rc | dev; empty = mapped from build_mode (release/stable, pre-release/rc, else dev)"
+    description: "stable | rc | dev; empty = mapped from the build mode (release→stable, pre-release→rc, else dev)"
+    required: false
+    default: ""
+  build-mode:
+    description: "clover2 build mode (develop, master, release, pre-release) — native naming; used for channel mapping when channel is empty"
     required: false
     default: ""
   type:
