@@ -42,7 +42,8 @@ function expandArtifacts(raw: string, workspace: string): string[] {
   const files = new Set<string>()
   for (const p of patterns) {
     const abs = isAbsolute(p) ? p : resolve(workspace, p)
-    const matches = existsSync(abs) && !abs.includes('*') ? [abs] : globSync(abs)
+    const globbed = globSync(abs)
+    const matches = globbed.length > 0 ? globbed : existsSync(abs) ? [abs] : []
     if (matches.length === 0) {
       core.info(`artifact-push: no files match "${p}" — pattern skipped`)
       continue
@@ -80,7 +81,7 @@ function main(): void {
 
   const composed = composeVersion(workspace)
   const version = core.getInput('version') || composed?.version || ''
-  const buildMode = composed?.buildMode ?? core.getInput('build-mode')
+  const buildMode = composed?.buildMode || core.getInput('build-mode')
   const channel = mapChannel(core.getInput('channel'), buildMode)
   const sha = (core.getInput('sha') || composed?.gitHash || '').slice(0, 7)
   const runId = process.env.GITHUB_RUN_ID ?? ''
@@ -140,4 +141,8 @@ function main(): void {
   core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`)
 }
 
-main()
+try {
+  main()
+} catch (e: unknown) {
+  core.setFailed(e instanceof Error ? e.message : String(e))
+}

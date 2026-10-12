@@ -20023,7 +20023,8 @@ function expandArtifacts(raw, workspace) {
   const files = /* @__PURE__ */ new Set();
   for (const p of patterns) {
     const abs = (0, import_node_path.isAbsolute)(p) ? p : (0, import_node_path.resolve)(workspace, p);
-    const matches = (0, import_node_fs.existsSync)(abs) && !abs.includes("*") ? [abs] : (0, import_node_fs2.globSync)(abs);
+    const globbed = (0, import_node_fs2.globSync)(abs);
+    const matches = globbed.length > 0 ? globbed : (0, import_node_fs.existsSync)(abs) ? [abs] : [];
     if (matches.length === 0) {
       core.info(`artifact-push: no files match "${p}" \u2014 pattern skipped`);
       continue;
@@ -20052,7 +20053,7 @@ function main() {
   const dryRun = core.getInput("dry_run") === "true";
   const composed = composeVersion(workspace);
   const version = core.getInput("version") || composed?.version || "";
-  const buildMode = composed?.buildMode ?? core.getInput("build-mode");
+  const buildMode = composed?.buildMode || core.getInput("build-mode");
   const channel = mapChannel(core.getInput("channel"), buildMode);
   const sha = (core.getInput("sha") || composed?.gitHash || "").slice(0, 7);
   const runId = process.env.GITHUB_RUN_ID ?? "";
@@ -20101,7 +20102,11 @@ function main() {
   for (const plan of plans) pushOne(plan, bucket, workspace, env);
   core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`);
 }
-main();
+try {
+  main();
+} catch (e) {
+  core.setFailed(e instanceof Error ? e.message : String(e));
+}
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:

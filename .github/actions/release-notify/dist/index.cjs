@@ -25911,13 +25911,14 @@ function readInputs() {
 init_cjs_shims();
 var import_handlebars = __toESM(require_lib2(), 1);
 function escapeHtml(s) {
-  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 function formatChangelog(raw, maxEntries, releaseUrl) {
   if (!raw) return "";
   const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l !== "");
   const bullets = lines.filter((l) => l.startsWith("- ")).length;
   const over = Math.max(0, bullets - maxEntries);
+  const link = escapeHtml(releaseUrl);
   const out = [];
   let n = 0;
   for (const line of lines) {
@@ -25928,12 +25929,16 @@ function formatChangelog(raw, maxEntries, releaseUrl) {
     else if (line.startsWith("- ")) out.push(`\u2022 ${escapeHtml(line.slice(2))}`);
     else out.push(escapeHtml(line));
   }
-  if (over > 0) out.push(`\u2026and ${over} more \u2014 <a href="${releaseUrl}">full changelog</a>`);
+  if (over > 0) out.push(`\u2026and ${over} more \u2014 <a href="${link}">full changelog</a>`);
   return out.join("\n");
+}
+function shortSha(s) {
+  return s.slice(0, 7);
 }
 function buildView(p) {
   const failed = p.status === "failure" || p.status === "cancelled";
-  const shaPart = p.sha ? ` @ ${p.sha.slice(0, 7)}` : "";
+  const sha = shortSha(p.sha);
+  const shaPart = p.sha ? ` @ ${sha}` : "";
   return {
     kind: p.kind,
     status: p.status,
@@ -25947,7 +25952,7 @@ function buildView(p) {
     extra: failed ? "" : p.extra,
     src: `${p.ref}${shaPart} \xB7 \u{1F464} ${p.actor}`,
     ref: p.ref,
-    sha: p.sha.slice(0, 7),
+    sha,
     actor: p.actor,
     releaseUrl: p.releaseUrl,
     runUrl: p.runUrl,
@@ -25960,21 +25965,39 @@ function tidy(s) {
 function renderTemplate(source, view) {
   const hbs = import_handlebars.default.create();
   hbs.registerHelper("eq", (a, b) => a === b);
-  hbs.registerHelper("shortSha", (s) => String(s ?? "").slice(0, 7));
+  hbs.registerHelper("shortSha", (s) => shortSha(String(s ?? "")));
   return tidy(hbs.compile(source)(view));
+}
+function truncateHtml(s, len) {
+  if (s.length <= len) return s;
+  return `${s.slice(0, len).replace(/<[^>]*$/, "").replace(/&[a-zA-Z#0-9]*$/, "")}\u2026`;
 }
 
 // .github/actions/release-notify/src/telegram.ts
 init_cjs_shims();
 async function sendTelegram(opts) {
+  const res = await post(opts, opts.text, "HTML");
+  if (res.ok) return { ok: true };
+  if (/can't parse entities|parse error/i.test(res.error ?? "")) {
+    const plain = stripHtml(opts.text);
+    const retry = await post(opts, plain, void 0);
+    if (retry.ok) return { ok: true };
+    return { ok: false, error: `HTML failed (${res.error}); plain-text retry failed (${retry.error})` };
+  }
+  return { ok: false, error: res.error };
+}
+function stripHtml(s) {
+  return s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+}
+async function post(opts, text, parseMode) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${opts.token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: opts.chat,
-        text: opts.text,
-        parse_mode: "HTML",
+        text,
+        ...parseMode ? { parse_mode: parseMode } : {},
         disable_web_page_preview: true,
         disable_notification: opts.silent
       })
@@ -25995,6 +26018,10 @@ var defaultTemplate = (0, import_node_path.join)(here, "..", "templates", "defau
 var maxMessageLength = 3900;
 async function main() {
   const inp = readInputs();
+  if (!["success", "failure", "cancelled"].includes(inp.status)) {
+    core2.warning(`release-notify: unexpected status "${inp.status}" \u2014 treating as failure`);
+    inp.status = "failure";
+  }
   const server = process.env.GITHUB_SERVER_URL ?? "https://github.com";
   const releaseUrl = inp.releaseUrl || (inp.tag ? `${server}/${inp.repo}/releases/tag/${inp.tag}` : "");
   const runUrl = inp.repo && inp.runId ? `${server}/${inp.repo}/actions/runs/${inp.runId}` : "";
@@ -26019,10 +26046,7 @@ async function main() {
     releaseUrl,
     runUrl
   });
-  const message = renderTemplate((0, import_node_fs.readFileSync)(templatePath, "utf8"), view).slice(
-    0,
-    maxMessageLength
-  );
+  const message = truncateHtml(renderTemplate((0, import_node_fs.readFileSync)(templatePath, "utf8"), view), maxMessageLength);
   core2.setOutput("message", message);
   core2.info(`--- release-notify message ---
 ${message}

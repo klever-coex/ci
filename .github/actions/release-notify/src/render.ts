@@ -38,7 +38,12 @@ export interface ViewParams {
 }
 
 export function escapeHtml(s: string): string {
-  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  return s
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 /**
@@ -52,6 +57,7 @@ export function formatChangelog(raw: string, maxEntries: number, releaseUrl: str
 
   const bullets = lines.filter((l) => l.startsWith('- ')).length
   const over = Math.max(0, bullets - maxEntries)
+  const link = escapeHtml(releaseUrl)
 
   const out: string[] = []
   let n = 0
@@ -63,13 +69,18 @@ export function formatChangelog(raw: string, maxEntries: number, releaseUrl: str
     else if (line.startsWith('- ')) out.push(`• ${escapeHtml(line.slice(2))}`)
     else out.push(escapeHtml(line))
   }
-  if (over > 0) out.push(`…and ${over} more — <a href="${releaseUrl}">full changelog</a>`)
+  if (over > 0) out.push(`…and ${over} more — <a href="${link}">full changelog</a>`)
   return out.join('\n')
+}
+
+export function shortSha(s: string): string {
+  return s.slice(0, 7)
 }
 
 export function buildView(p: ViewParams): RenderView {
   const failed = p.status === 'failure' || p.status === 'cancelled'
-  const shaPart = p.sha ? ` @ ${p.sha.slice(0, 7)}` : ''
+  const sha = shortSha(p.sha)
+  const shaPart = p.sha ? ` @ ${sha}` : ''
   return {
     kind: p.kind,
     status: p.status,
@@ -83,7 +94,7 @@ export function buildView(p: ViewParams): RenderView {
     extra: failed ? '' : p.extra,
     src: `${p.ref}${shaPart} · 👤 ${p.actor}`,
     ref: p.ref,
-    sha: p.sha.slice(0, 7),
+    sha,
     actor: p.actor,
     releaseUrl: p.releaseUrl,
     runUrl: p.runUrl,
@@ -105,6 +116,12 @@ export function tidy(s: string): string {
 export function renderTemplate(source: string, view: RenderView): string {
   const hbs = Handlebars.create()
   hbs.registerHelper('eq', (a: unknown, b: unknown) => a === b)
-  hbs.registerHelper('shortSha', (s: unknown) => String(s ?? '').slice(0, 7))
+  hbs.registerHelper('shortSha', (s: unknown) => shortSha(String(s ?? '')))
   return tidy(hbs.compile(source)(view))
+}
+
+/** Truncate to len without leaving a half-written tag or entity at the end. */
+export function truncateHtml(s: string, len: number): string {
+  if (s.length <= len) return s
+  return `${s.slice(0, len).replace(/<[^>]*$/, '').replace(/&[a-zA-Z#0-9]*$/, '')}…`
 }

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as core from '@actions/core'
 import { readInputs } from './inputs.js'
-import { buildView, renderTemplate } from './render.js'
+import { buildView, renderTemplate, truncateHtml } from './render.js'
 import { sendTelegram } from './telegram.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -12,6 +12,10 @@ const maxMessageLength = 3900 // Telegram hard limit is 4096
 
 async function main(): Promise<void> {
   const inp = readInputs()
+  if (!['success', 'failure', 'cancelled'].includes(inp.status)) {
+    core.warning(`release-notify: unexpected status "${inp.status}" — treating as failure`)
+    inp.status = 'failure'
+  }
 
   const server = process.env.GITHUB_SERVER_URL ?? 'https://github.com'
   const releaseUrl =
@@ -43,10 +47,7 @@ async function main(): Promise<void> {
     runUrl,
   })
 
-  const message = renderTemplate(readFileSync(templatePath, 'utf8'), view).slice(
-    0,
-    maxMessageLength,
-  )
+  const message = truncateHtml(renderTemplate(readFileSync(templatePath, 'utf8'), view), maxMessageLength)
   core.setOutput('message', message)
   core.info(`--- release-notify message ---\n${message}\n------------------------------`)
 
