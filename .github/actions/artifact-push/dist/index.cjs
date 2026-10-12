@@ -19867,10 +19867,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports2.warning = warning;
-    function notice2(message, properties = {}) {
+    function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports2.notice = notice2;
+    exports2.notice = notice;
     function info2(message) {
       process.stdout.write(message + os.EOL);
     }
@@ -19947,8 +19947,6 @@ var core = __toESM(require_core(), 1);
 // .github/actions/artifact-push/src/plan.ts
 init_cjs_shims();
 var CHANNELS = ["stable", "rc", "dev"];
-var IMAGE_EXTS = /* @__PURE__ */ new Set(["img", "xz", "qcow2", "ova", "vdi", "vmdk"]);
-var EXTRA_EXTS = /* @__PURE__ */ new Set(["sha", "zip", "ovf", "txt", "md5"]);
 function mapChannel(channel, buildMode) {
   if (channel !== "") {
     if (!CHANNELS.includes(channel)) {
@@ -19965,29 +19963,18 @@ function mapChannel(channel, buildMode) {
       return "dev";
   }
 }
-function typeForExt(ext) {
-  const e = ext.toLowerCase();
-  if (IMAGE_EXTS.has(e)) return "image";
-  if (EXTRA_EXTS.has(e)) return "extra";
-  return null;
-}
 function buildKey(o) {
   const prefix = o.platform ? `${o.platform}-` : "";
-  return `${o.channel}/${o.product}/${prefix}${o.version}.${o.ext}`;
+  return `${o.channel}/${o.product}/${o.product}-${prefix}${o.version}.${o.ext}`;
 }
 function planUploads(files, opts) {
   if (opts.product === "") throw new Error("product is required (hub entry filter tag)");
   if (opts.version === "") throw new Error("version is required (pass input or tooling.json)");
-  const uploads = [];
-  const skipped = [];
-  for (const file of files) {
+  if (files.length === 0) throw new Error("no files matched");
+  return files.map((file) => {
     const dot = file.lastIndexOf(".");
-    const ext = dot > 0 ? file.slice(dot + 1) : "";
-    const type = ext !== "" ? typeForExt(ext) : null;
-    if (type === null) {
-      skipped.push(file);
-      continue;
-    }
+    if (dot <= 0) throw new Error(`cannot determine extension of "${file}" (needed for the object name)`);
+    const ext = file.slice(dot + 1);
     const key = buildKey({
       channel: opts.channel,
       product: opts.product,
@@ -19998,20 +19985,14 @@ function planUploads(files, opts) {
     const tags = {
       product: opts.product,
       version: opts.version,
-      channel: opts.channel,
-      type
+      channel: opts.channel
     };
+    if (opts.type) tags.type = opts.type;
     if (opts.platform) tags.platform = opts.platform;
     if (opts.sha) tags.sha = opts.sha;
     if (opts.runId) tags.run_id = opts.runId;
-    uploads.push({ file, key, tags });
-  }
-  if (uploads.length === 0) {
-    throw new Error(
-      `no uploadable artifacts among ${files.length} file(s); whitelist: ${[...IMAGE_EXTS, ...EXTRA_EXTS].join(", ")}`
-    );
-  }
-  return { uploads, skipped };
+    return { file, key, tags };
+  });
 }
 
 // .github/actions/artifact-push/src/index.ts
@@ -20068,7 +20049,6 @@ function main() {
   const product = core.getInput("product", { required: true });
   const bucket = core.getInput("bucket") || "clover2";
   const platform = core.getInput("platform");
-  const typeOverride = core.getInput("type");
   const dryRun = core.getInput("dry_run") === "true";
   const composed = composeVersion(workspace);
   const version = core.getInput("version") || composed?.version || "";
@@ -20083,27 +20063,22 @@ function main() {
     return;
   }
   const files = expandArtifacts(artifacts, workspace);
-  const { uploads: plans, skipped } = planUploads(files, {
+  const plans = planUploads(files, {
     product,
     version,
     channel,
+    type: core.getInput("type"),
     platform,
     sha,
     runId
   });
-  for (const f of skipped) core.notice(`skipped (extension outside whitelist): ${(0, import_node_path.relative)(workspace, f)}`);
-  let finalPlans = plans;
-  if (typeOverride !== "") {
-    core.info(`type override: ${typeOverride} for all files`);
-    finalPlans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }));
-  }
   core.info(
-    finalPlans.map(
+    plans.map(
       (p) => `${(0, import_node_path.relative)(workspace, p.file)} \u2192 ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(", ")}]`
     ).join("\n")
   );
-  core.setOutput("keys", finalPlans.map((p) => p.key).join("\n"));
-  core.setOutput("count", String(finalPlans.length));
+  core.setOutput("keys", plans.map((p) => p.key).join("\n"));
+  core.setOutput("count", String(plans.length));
   if (dryRun) {
     core.info("dry run \u2014 nothing uploaded");
     return;
@@ -20123,8 +20098,8 @@ function main() {
     const v = core.getInput(input);
     if (v !== "") env[envName] = v;
   }
-  for (const plan of finalPlans) pushOne(plan, bucket, workspace, env);
-  core.info(`uploaded ${finalPlans.length} artifact(s) to bucket ${bucket}`);
+  for (const plan of plans) pushOne(plan, bucket, workspace, env);
+  core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`);
 }
 main();
 /*! Bundled license information:

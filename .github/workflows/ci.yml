@@ -42,6 +42,7 @@ jobs:
           product: klever5
           version: 0.10.0
           channel: stable
+          type: image
           platform: rpi5b
           dry_run: true
 
@@ -52,6 +53,6 @@ jobs:
         run: |
           set -euo pipefail
           [[ "${COUNT}" == "2" ]]
-          grep -qx "stable/klever5/rpi5b-0.10.0.xz" <<< "$KEYS"
-          grep -qx "stable/klever5/rpi5b-0.10.0.sha" <<< "$KEYS"
+          grep -qx "stable/klever5/klever5-rpi5b-0.10.0.xz" <<< "$KEYS"
+          grep -qx "stable/klever5/klever5-rpi5b-0.10.0.sha" <<< "$KEYS"
           echo "OK"

@@ -76,7 +76,6 @@ function main(): void {
   const product = core.getInput('product', { required: true })
   const bucket = core.getInput('bucket') || 'clover2'
   const platform = core.getInput('platform')
-  const typeOverride = core.getInput('type')
   const dryRun = core.getInput('dry_run') === 'true'
 
   const composed = composeVersion(workspace)
@@ -94,31 +93,26 @@ function main(): void {
   }
 
   const files = expandArtifacts(artifacts, workspace)
-  const { uploads: plans, skipped } = planUploads(files, {
+  const plans = planUploads(files, {
     product,
     version,
     channel,
+    type: core.getInput('type'),
     platform,
     sha,
     runId,
   })
-  for (const f of skipped) core.notice(`skipped (extension outside whitelist): ${relative(workspace, f)}`)
-  let finalPlans = plans
-  if (typeOverride !== '') {
-    core.info(`type override: ${typeOverride} for all files`)
-    finalPlans = plans.map((p) => ({ ...p, tags: { ...p.tags, type: typeOverride } }))
-  }
 
   core.info(
-    finalPlans
+    plans
       .map(
         (p) =>
           `${relative(workspace, p.file)} → ${bucket}/${p.key} [${Object.entries(p.tags).map(([k, v]) => `${k}=${v}`).join(', ')}]`,
       )
       .join('\n'),
   )
-  core.setOutput('keys', finalPlans.map((p) => p.key).join('\n'))
-  core.setOutput('count', String(finalPlans.length))
+  core.setOutput('keys', plans.map((p) => p.key).join('\n'))
+  core.setOutput('count', String(plans.length))
 
   if (dryRun) {
     core.info('dry run — nothing uploaded')
@@ -142,8 +136,8 @@ function main(): void {
     if (v !== '') env[envName] = v
   }
 
-  for (const plan of finalPlans) pushOne(plan, bucket, workspace, env)
-  core.info(`uploaded ${finalPlans.length} artifact(s) to bucket ${bucket}`)
+  for (const plan of plans) pushOne(plan, bucket, workspace, env)
+  core.info(`uploaded ${plans.length} artifact(s) to bucket ${bucket}`)
 }
 
 main()

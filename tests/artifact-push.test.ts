@@ -3,7 +3,6 @@ import {
   buildKey,
   mapChannel,
   planUploads,
-  typeForExt,
 } from '../.github/actions/artifact-push/src/plan.js'
 
 describe('mapChannel', () => {
@@ -24,36 +23,17 @@ describe('mapChannel', () => {
   })
 })
 
-describe('typeForExt', () => {
-  it('image extensions', () => {
-    for (const ext of ['img', 'xz', 'qcow2', 'ova', 'vdi', 'vmdk']) {
-      expect(typeForExt(ext)).toBe('image')
-    }
-  })
-
-  it('extra extensions', () => {
-    for (const ext of ['sha', 'zip', 'ovf', 'txt']) {
-      expect(typeForExt(ext)).toBe('extra')
-    }
-  })
-
-  it('unknown extensions are skipped, not errors', () => {
-    expect(typeForExt('exe')).toBeNull()
-    expect(typeForExt('json')).toBeNull()
-  })
-})
-
 describe('buildKey', () => {
   it('with platform', () => {
     expect(
-      buildKey({ channel: 'stable', product: 'klever5', version: '0.10.0', ext: 'xz', platform: 'rpi5b' }),
-    ).toBe('stable/klever5/rpi5b-0.10.0.xz')
+      buildKey({ channel: 'stable', product: 'klever5', version: '0.10.0', ext: 'zip', platform: 'rpi5b' }),
+    ).toBe('stable/klever5/klever5-rpi5b-0.10.0.zip')
   })
 
-  it('without platform falls back to product name', () => {
+  it('without platform', () => {
     expect(
       buildKey({ channel: 'rc', product: 'simulator', version: '0.3.0-rc.1', ext: 'qcow2' }),
-    ).toBe('rc/simulator/0.3.0-rc.1.qcow2')
+    ).toBe('rc/simulator/simulator-0.3.0-rc.1.qcow2')
   })
 })
 
@@ -67,17 +47,14 @@ describe('planUploads', () => {
     runId: '99',
   }
 
-  it('plans image + checksum pair with hub tags', () => {
-    const { uploads: plans } = planUploads(
-      [
-        'build/output/images/klever5-rpi5b.img.xz',
-        'build/output/images/klever5-rpi5b.img.xz.sha',
-        'build/output/images/klever5-rpi5b.img.xz.assets.json',
-      ],
-      base,
+  it('tags every file with the caller-provided type', () => {
+    const plans = planUploads(
+      ['out/klever5-rpi5b.img.zip', 'out/klever5-rpi5b.img.zip.sha'],
+      { ...base, type: 'image' },
     )
     expect(plans).toHaveLength(2)
-    expect(plans[0]?.key).toBe('stable/klever5/rpi5b-0.10.0.xz')
+    expect(plans[0]?.key).toBe('stable/klever5/klever5-rpi5b-0.10.0.zip')
+    expect(plans[1]?.key).toBe('stable/klever5/klever5-rpi5b-0.10.0.sha')
     expect(plans[0]?.tags).toEqual({
       product: 'klever5',
       version: '0.10.0',
@@ -87,40 +64,30 @@ describe('planUploads', () => {
       sha: 'a1b2c3d',
       run_id: '99',
     })
-    expect(plans[1]?.key).toBe('stable/klever5/rpi5b-0.10.0.sha')
-    expect(plans[1]?.tags.type).toBe('extra')
   })
 
-  it('reports non-whitelisted files as skipped', () => {
-    const { uploads, skipped } = planUploads(
-      ['a.img.xz', 'a.img.xz.sha', 'a.img.xz.assets.json', 'Makefile'],
-      base,
-    )
-    expect(uploads.map((u) => u.key)).toEqual([
-      'stable/klever5/rpi5b-0.10.0.xz',
-      'stable/klever5/rpi5b-0.10.0.sha',
+  it('no type input — no type tag; nothing is guessed from the extension', () => {
+    const plans = planUploads(['a.qcow2', 'a.sha'], base)
+    expect(plans[0]?.tags.type).toBeUndefined()
+    expect(plans[1]?.tags.type).toBeUndefined()
+  })
+
+  it('uploads whatever matched — no whitelist filtering', () => {
+    const plans = planUploads(['a.img', 'b.json', 'c.txt'], { ...base, type: 'extra' })
+    expect(plans.map((p) => p.key)).toEqual([
+      'stable/klever5/klever5-rpi5b-0.10.0.img',
+      'stable/klever5/klever5-rpi5b-0.10.0.json',
+      'stable/klever5/klever5-rpi5b-0.10.0.txt',
     ])
-    expect(skipped).toEqual(['a.img.xz.assets.json', 'Makefile'])
   })
 
-  it('fails when nothing survives the whitelist', () => {
-    expect(() => planUploads(['a.json'], base)).toThrow(/no uploadable artifacts/)
+  it('requires product, version and files', () => {
+    expect(() => planUploads(['a.zip'], { product: '', version: '1', channel: 'dev' })).toThrow(/product/)
+    expect(() => planUploads(['a.zip'], { product: 'p', version: '', channel: 'dev' })).toThrow(/version/)
+    expect(() => planUploads([], { product: 'p', version: '1', channel: 'dev' })).toThrow(/no files/)
   })
 
-  it('omits optional tags when not given', () => {
-    const { uploads: plans } = planUploads(['a.qcow2'], { product: 'simulator', version: '1.0.0', channel: 'dev' })
-    expect(plans[0]?.tags).toEqual({
-      product: 'simulator',
-      version: '1.0.0',
-      channel: 'dev',
-      type: 'image',
-    })
+  it('extension-less files cannot be named', () => {
+    expect(() => planUploads(['Makefile'], base)).toThrow(/extension/)
   })
-
-  it('requires product and version', () => {
-    expect(() => planUploads(['a.xz'], { product: '', version: '1.0.0', channel: 'dev' })).toThrow(/product/)
-    expect(() => planUploads(['a.xz'], { product: 'p', version: '', channel: 'dev' })).toThrow(/version/)
-  })
-
-
 })

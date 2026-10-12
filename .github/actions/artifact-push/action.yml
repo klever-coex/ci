@@ -30,7 +30,7 @@ inputs:
     required: false
     default: ""
   type:
-    description: "Override the hub type tag for all files; empty = auto by extension (image | extra)"
+    description: "Hub type tag for all matched files (image, extra, ...) — decided by the caller; empty = tag omitted"
     required: false
     default: ""
   platform:
